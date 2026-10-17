@@ -415,7 +415,8 @@ label.f { display: block; font-size: 0.82rem; font-weight: 650; font-stretch: 92
 /* color swatches (used in new-subject + settings) */
 .colorrow { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 8px; }
 .colordot {
-  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  width: 28px; height: 28px; min-width: 0; padding: 0; flex: 0 0 auto;
+  border-radius: 50%; cursor: pointer;
   border: 2px solid transparent;
   box-shadow: 0 0 0 1.5px rgba(var(--ink-rgb), 0.12) inset;
 }
