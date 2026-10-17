@@ -94,6 +94,15 @@ async function pushSubjects(userId) {
   for (const s of dirty) { const live = state.subjects.find(x => x.id === s.id); if (live) live.dirty = false; }
 }
 
+/** Hard-deletes a subject row remotely. No-op if offline/signed out — the
+ *  row was already removed locally, so there's nothing to reconcile on the
+ *  next pull (subjects have no tombstone column, unlike sessions). */
+export async function deleteSubjectRemote(id) {
+  if (!syncAvailable || !state.userId) return;
+  const { error } = await supabase.from("subjects").delete().eq("id", id);
+  if (error) console.warn("remote subject delete failed", error);
+}
+
 async function pullSubjects(userId) {
   const since = (await db.getMeta("subjectsLastPulledAt")) || "1970-01-01T00:00:00Z";
   const { data, error } = await supabase

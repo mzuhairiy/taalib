@@ -213,6 +213,23 @@ export function updateSubject(id, patch) {
   notify();
 }
 
+/**
+ * Hard-deletes a subject with no session history. Subjects with sessions
+ * can't be deleted (the `sessions.subject_id` FK is `on delete restrict`,
+ * and there's no tombstone column for subjects) — archive those instead.
+ * Returns "ok", "hasSessions", or "lastSubject".
+ */
+export function deleteSubject(id) {
+  const idx = state.subjects.findIndex(x => x.id === id);
+  if (idx < 0) return "ok";
+  if (state.sessions.some(s => s.subjectId === id)) return "hasSessions";
+  if (liveSubjects().filter(s => s.id !== id).length === 0 && !state.subjects[idx].archived) return "lastSubject";
+  state.subjects.splice(idx, 1);
+  db.remove("subjects", id).catch(e => console.warn("delete subject failed", e));
+  notify();
+  return "ok";
+}
+
 export function liveSubjects() {
   return state.subjects.filter(s => !s.archived);
 }

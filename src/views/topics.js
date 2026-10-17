@@ -1,4 +1,4 @@
-import { state, subjectColors, addSubject, updateSubject, DEFAULT_TARGET_SESSIONS } from "../save.js";
+import { state, subjectColors, addSubject, updateSubject } from "../save.js";
 import { t, locale } from "../i18n.js";
 import { esc, ymd, today, parse, addDays, fmt, fmtTime, diffDays } from "../utils.js";
 
@@ -76,21 +76,13 @@ function topicCard(subj) {
       <div class="topic-row">
         <input type="text" class="topic-name" data-topic-name="${esc(subj.id)}" value="${esc(subj.name)}" maxlength="60" />
         ${archiveBtn}
+        <button class="btn ghost sm danger" data-act="topic-delete" data-id="${esc(subj.id)}">${esc(t("topics.delete"))}</button>
       </div>
       <div class="topic-spark">
         <div class="small muted spark-label">${esc(t("topics.last30"))}</div>
         ${spark}
       </div>
       <div class="topic-meta small muted">${esc(t("topics.lastActive"))}: ${esc(lastActiveLabel)}</div>
-      <div class="topic-target">
-        <label class="small muted" for="target-${esc(subj.id)}">${esc(t("topics.targetLabel"))}:</label>
-        <input class="topic-target-input" id="target-${esc(subj.id)}" type="number" min="1" max="999" step="1"
-          data-topic-target="${esc(subj.id)}"
-          value="${esc(String(subj.targetSessions || DEFAULT_TARGET_SESSIONS))}" />
-        ${sessionCount >= (subj.targetSessions || DEFAULT_TARGET_SESSIONS)
-          ? `<span class="chip chip-mint sm topic-done-chip">${esc(t("topics.completed"))}</span>`
-          : `<span class="small muted">${esc(`${sessionCount}/${subj.targetSessions || DEFAULT_TARGET_SESSIONS}`)}</span>`}
-      </div>
       ${sessionCount ? `
         <details class="topic-sums">
           <summary class="small"><span class="open-label">${esc(t("topics.showSummaries"))}</span><span class="close-label">${esc(t("topics.hideSummaries"))}</span></summary>
@@ -203,20 +195,4 @@ export function wireTopics(root, onChange) {
     });
   });
 
-  // target sessions
-  root.querySelectorAll("[data-topic-target]").forEach(input => {
-    const id = input.dataset.topicTarget;
-    const commit = () => {
-      const v = parseInt(input.value, 10);
-      if (!Number.isFinite(v) || v < 1) {
-        input.value = String(DEFAULT_TARGET_SESSIONS);
-        updateSubject(id, { targetSessions: DEFAULT_TARGET_SESSIONS });
-      } else {
-        updateSubject(id, { targetSessions: v });
-      }
-      onChange();
-    };
-    input.addEventListener("change", commit);
-    input.addEventListener("blur", commit);
-  });
 }

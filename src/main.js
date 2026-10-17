@@ -3,7 +3,7 @@ import { registerSW } from "virtual:pwa-register";
 import {
   state, save, resetAccountData, exportJSON, importJSON, markSeen,
   onAfterSave, hydrate, addSession,
-  updateSession, deleteSession
+  updateSession, deleteSession, deleteSubject
 } from "./save.js";
 import { migrateLegacyIfNeeded } from "./migrate-legacy.js";
 import { t } from "./i18n.js";
@@ -418,6 +418,24 @@ document.addEventListener("click", (e) => {
           toast(t("toast.reset"));
           setTab("home");
           syncPushDebounced();
+        }
+      });
+      break;
+    }
+    case "topic-delete": {
+      const id = btn.dataset.id;
+      openConfirm({
+        title: t("topics.confirmDelete.title"),
+        body: t("topics.confirmDelete.body"),
+        okLabel: t("topics.confirmDelete.ok"),
+        cancelLabel: t("topics.confirmDelete.no"),
+        danger: true,
+        onOk: () => {
+          const result = deleteSubject(id);
+          if (result === "hasSessions") { toast(t("topics.deleteBlocked")); return; }
+          if (result === "lastSubject") { toast(t("topics.deleteBlockedLast")); return; }
+          sync.deleteSubjectRemote(id).catch(() => {});
+          render();
         }
       });
       break;
