@@ -724,48 +724,6 @@ mark {
   border-radius: 3px;
 }
 
-/* ===== Hero: growth illustration + streak ===== */
-.hero-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.hero-count-row { display: flex; align-items: center; gap: 14px; }
-.growth {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.growth svg { display: block; }
-.hero-streak {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  padding-left: 10px;
-  border-left: 1px solid rgba(var(--ink-rgb), 0.1);
-  min-width: 72px;
-}
-.hero-streak-num {
-  font-size: 1.6rem;
-  font-weight: 800;
-  font-stretch: 108%;
-  color: var(--ink);
-  line-height: 1;
-}
-.hero-streak-label {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  margin-top: 4px;
-  text-align: right;
-}
-@media (max-width: 480px) {
-  .hero-count-row { gap: 10px; }
-  .growth, .growth svg { width: 40px; height: 40px; }
-  .growth { flex-basis: 40px; }
-  .hero-streak-num { font-size: 1.4rem; }
-}
-
 /* Topic target input */
 .topic-target {
   display: flex;
