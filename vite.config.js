@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icons/favicon.svg", "icons/apple-touch-icon.png"],
+      includeAssets: ["icons/favicon.png", "icons/apple-touch-icon.png"],
       manifest: {
         name: "Taalib — Belajar harian",
         short_name: "Taalib",
