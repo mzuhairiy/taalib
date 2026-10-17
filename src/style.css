@@ -150,6 +150,7 @@ body {
   background-attachment: fixed;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+button { -webkit-appearance: none; appearance: none; background: none; border: 0; }
 .app { max-width: 720px; margin: 0 auto; padding: 0 20px 80px; }
 
 h1, h2, h3 { margin: 0; line-height: 1.15; }
