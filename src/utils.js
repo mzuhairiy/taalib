@@ -9,6 +9,16 @@ export const today = () => {
   return new Date(n.getFullYear(), n.getMonth(), n.getDate());
 };
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+/** RFC4122 v4 UUID — required for Postgres `uuid` columns (subjects.id, sessions.id). */
+export function newId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const fmt = (d, locale = "id-ID", y = true) =>
   d.toLocaleDateString(locale, y ? { day: "numeric", month: "short", year: "numeric" } : { day: "numeric", month: "short" });
@@ -31,3 +41,19 @@ export const monthShort = (d, locale = "id-ID") =>
   d.toLocaleDateString(locale, { month: "short" });
 export const dayShort = (d, locale = "id-ID") =>
   d.toLocaleDateString(locale, { weekday: "short" });
+
+export function deriveTitle(summary, max = 60) {
+  const line = String(summary || "").split(/\r?\n/).map(s => s.trim()).find(Boolean) || "";
+  if (line.length <= max) return line;
+  return line.slice(0, max - 1).trimEnd() + "…";
+}
+
+export const escapeRegex = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export function highlight(text, query) {
+  const safe = esc(text);
+  const q = String(query || "").trim();
+  if (!q) return safe;
+  const re = new RegExp(escapeRegex(esc(q)), "gi");
+  return safe.replace(re, m => `<mark>${m}</mark>`);
+}

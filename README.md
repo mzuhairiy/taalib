@@ -1,12 +1,15 @@
 # Taalib — Belajar harian
 
-A small, honest personal learning PWA. Daily session loop, mandatory summary, hidden pixel-art calendar, Qur'an/hadith + motivational reminders. Local-first; optional cross-device sync.
+A small, honest personal learning PWA. Daily session loop, mandatory summary, hidden pixel-art calendar, Qur'an/hadith + motivational reminders. An account is required — Postgres (Supabase) is the source of truth, with an IndexedDB cache on-device so the app keeps working between syncs.
 
 ## Run locally
 
+Requires a Supabase project (see **Account setup** below) — without it the app shows a "not configured" screen instead of starting.
+
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+cp .env.example .env.local   # fill in your Supabase project's URL + anon key
+npm run dev                  # http://localhost:5173
 ```
 
 ## Build
@@ -18,9 +21,9 @@ npm run preview    # try the production build with PWA active
 
 ---
 
-## Cross-device sync (optional, ~10 min setup)
+## Account setup (required, ~10 min)
 
-Taalib works 100% local by default. To sync across devices (phone + laptop, etc.):
+Taalib needs a Supabase project before it will run at all — there's no local-only mode. Data lives in Postgres (synced per-record, not as one blob) with an IndexedDB cache on-device for offline use between syncs.
 
 ### 1. Create a Supabase project
 
@@ -31,29 +34,13 @@ Taalib works 100% local by default. To sync across devices (phone + laptop, etc.
    - **Project URL** → this is `VITE_SUPABASE_URL`
    - **anon public** key → this is `VITE_SUPABASE_ANON_KEY`
 
-### 2. Create the storage table
+### 2. Create the schema
 
-In the Supabase dashboard, open **SQL Editor** → **New query** → paste and run:
+In the Supabase dashboard, open **SQL Editor** → **New query** → paste and run the contents of [`supabase/migrations/0001_schema.sql`](supabase/migrations/0001_schema.sql).
 
-```sql
-create table if not exists taalib_state (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null,
-  updated_at timestamptz not null default now()
-);
+This creates three tables — `subjects` (topics), `sessions` (learning sessions / summaries), and `user_settings` (language/theme/preferences) — each with row-level security scoped to `auth.uid()`, so every user only ever sees their own rows. `sessions` use a soft-delete column (`deleted_at`) rather than a hard `DELETE`, so a deletion on one device propagates as a tombstone to your other signed-in devices instead of silently reappearing on next sync.
 
-alter table taalib_state enable row level security;
-
-create policy "own data select" on taalib_state
-  for select using (auth.uid() = user_id);
-
-create policy "own data insert" on taalib_state
-  for insert with check (auth.uid() = user_id);
-
-create policy "own data update" on taalib_state
-  for update using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-```
+If you have an older deployment still using the single `taalib_state` blob table, keep it in place until you've confirmed users have migrated (the app does this automatically on first sign-in per browser — see `src/migrate-legacy.js`), then run [`supabase/migrations/0002_drop_legacy_blob_table.sql`](supabase/migrations/0002_drop_legacy_blob_table.sql).
 
 ### 3. Enable email magic-link auth
 
@@ -73,9 +60,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open the app → click the gear ⚙ → scroll to **Sinkron antar perangkat** → enter your email → check inbox → click the link → done. The sync pill turns green ("Tersinkron") whenever your laptop and phone agree.
+Opening the app now shows a sign-in screen — enter your email, check your inbox, click the link (or use the 6-digit code fallback) and you're in. Once signed in, the Settings sync pill turns green ("Tersinkron") whenever your laptop and phone agree.
 
-Last-write-wins by server timestamp. Local-only usage is preserved: whatever you did offline is pushed up on next sign-in.
+Sync is per-record (each subject/session/settings row syncs independently), not a single whole-state blob — editing a summary on your phone and a different one on your laptop no longer risks one overwriting the other. A row with unsaved local edits is never clobbered by an incoming sync until it's confirmed pushed.
 
 ---
 
@@ -108,6 +95,6 @@ Open the deployed URL in Safari (iOS) or Chrome (Android) → tap Share / menu �
 
 ## Tech
 
-Vanilla JS + Vite + `vite-plugin-pwa` (Workbox). Optional `@supabase/supabase-js` for sync.
+Vanilla JS + Vite + `vite-plugin-pwa` (Workbox). `@supabase/supabase-js` for auth + Postgres sync (required). IndexedDB (native, no library) as the on-device cache.
 
-Bundle: ~20 KB gz JS (without sync) / ~55 KB gz (with Supabase client).
+Bundle: ~55 KB gz JS (includes the Supabase client, which is required).

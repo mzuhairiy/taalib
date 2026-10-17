@@ -2,6 +2,8 @@ import { state, subjectById } from "../save.js";
 import { t, locale, greeting } from "../i18n.js";
 import { renderCalendarGrid, gridTotal } from "../components/grid.js";
 import { scriptureCard, motivationLine } from "../components/banner.js";
+import { renderGrowth } from "../components/growth.js";
+import { currentStreak, growthStage } from "../progress.js";
 import { affirmations } from "../content/affirmations.js";
 import { aspirations } from "../content/aspirations.js";
 import { scripture } from "../content/scripture.js";
@@ -44,16 +46,27 @@ export function renderHome({ animateDate = null, reminder, canvasCopyIdx = 0 } =
     </section>
   `;
 
-  // Hero (big counter + today hint)
+  // Hero (big counter + growth + today hint + streak)
   const todayHintKey = live ? "home.todayHint.more" : (todaysSessions.length ? "home.todayHint.done" : "home.todayHint.first");
+  const stage = growthStage(state);
+  const streak = currentStreak(state.sessions);
   const heroHtml = `
     <section class="hero-card">
       <div class="hero-grid">
-        <div>
-          <div class="hero-count">${filled}</div>
-          <div class="hero-label">${esc(t("home.sessionsLabel"))} <span class="of">/ ${total}</span></div>
+        <div class="hero-main">
+          <div class="hero-count-row">
+            <div>
+              <div class="hero-count">${filled}</div>
+              <div class="hero-label">${esc(t("home.sessionsLabel"))} <span class="of">/ ${total}</span></div>
+            </div>
+            ${renderGrowth({ kind: "flower", stage })}
+          </div>
+          <div class="hero-hint">${esc(t(todayHintKey))}</div>
         </div>
-        <div class="hero-hint">${esc(t(todayHintKey))}</div>
+        <div class="hero-streak" title="${esc(t("home.streakHint"))}">
+          <div class="hero-streak-num">${streak}</div>
+          <div class="hero-streak-label">${esc(t("home.streakLabel"))}</div>
+        </div>
       </div>
     </section>
   `;

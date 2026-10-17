@@ -122,6 +122,58 @@ export function openSummary({ onSave, onCancel }) {
   render();
 }
 
+export function openSummaryEdit({ session, onSave, onCancel }) {
+  currentConfig = { dismissOnBackdrop: false };
+  const initialTitle = String(session.title || "");
+  const initialBody = String(session.summary || "");
+
+  panelEl.innerHTML = `
+    <div class="sheet-h"><h2>${esc(t("review.editTitle"))}</h2></div>
+    <div class="sheet-b" style="display:grid;gap:14px">
+      <div>
+        <label class="f" for="edit-title">${esc(t("review.titleLabel"))}</label>
+        <input type="text" id="edit-title" maxlength="120" placeholder="${esc(t("review.titlePh"))}" value="${esc(initialTitle)}" autocomplete="off" />
+      </div>
+      <div>
+        <label class="f" for="edit-body">${esc(t("review.bodyLabel"))}</label>
+        <textarea id="edit-body" rows="6">${esc(initialBody)}</textarea>
+        <div class="small muted" id="edit-hint" style="margin-top:6px"></div>
+      </div>
+      <div class="btnrow" style="justify-content:flex-end;gap:10px">
+        <button class="btn ghost" data-act="edit-cancel">${esc(t("modal.summary.cancel"))}</button>
+        <button class="btn primary" id="edit-save">${esc(t("review.save"))}</button>
+      </div>
+    </div>
+  `;
+  modalEl.classList.remove("hidden");
+
+  const titleInput = panelEl.querySelector("#edit-title");
+  const bodyInput = panelEl.querySelector("#edit-body");
+  const saveBtn = panelEl.querySelector("#edit-save");
+  const hint = panelEl.querySelector("#edit-hint");
+
+  function sync() {
+    const n = bodyInput.value.trim().length;
+    saveBtn.disabled = n < 20;
+    hint.textContent = n < 20 ? `${t("modal.summary.minHint")} (${n}/20)` : "";
+  }
+  bodyInput.addEventListener("input", sync);
+  sync();
+
+  saveBtn.addEventListener("click", () => {
+    const b = bodyInput.value.trim();
+    if (b.length < 20) return;
+    const tt = titleInput.value.trim().slice(0, 120);
+    close();
+    onSave && onSave({ title: tt, summary: b });
+  });
+  panelEl.querySelector('[data-act="edit-cancel"]').addEventListener("click", () => {
+    close();
+    onCancel && onCancel();
+  });
+  setTimeout(() => (initialTitle ? bodyInput : titleInput).focus(), 30);
+}
+
 export function openConfirm({ title, body, okLabel, cancelLabel, danger = false, onOk, onCancel }) {
   currentConfig = { dismissOnBackdrop: true };
   panelEl.innerHTML = `

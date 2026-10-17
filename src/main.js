@@ -1,18 +1,24 @@
 import "./style.css";
 import { registerSW } from "virtual:pwa-register";
 import {
-  state, save, reset, exportJSON, importJSON, markSeen,
-  onAfterSave, applyRemote, markSynced, hasUnpushedChanges
+  state, save, resetAccountData, exportJSON, importJSON, markSeen,
+  onAfterSave, hydrate, addSession,
+  updateSession, deleteSession
 } from "./save.js";
+import { migrateLegacyIfNeeded } from "./migrate-legacy.js";
 import { t } from "./i18n.js";
 import { ymd, today, uid } from "./utils.js";
 import * as sync from "./sync.js";
 import { renderHome, pickHomeReminderPick, pickCanvasCopyIdx } from "./views/home.js";
-import { renderReview, renderReviewList, setSearch, setFilterSubject } from "./views/review.js";
+import {
+  renderReview, setSearch, setFilterSubject,
+  openTopic, openSummaryDetail, goBack, reconcileAfterDelete
+} from "./views/review.js";
 import { renderSettings } from "./views/settings.js";
 import { renderTopics, wireTopics } from "./views/topics.js";
+import { renderAuthGate } from "./views/auth-gate.js";
 import { renderBanner } from "./components/banner.js";
-import { initModal, openSummary, openConfirm } from "./components/modal.js";
+import { initModal, openSummary, openSummaryEdit, openConfirm } from "./components/modal.js";
 import { affirmations } from "./content/affirmations.js";
 import { aspirations } from "./content/aspirations.js";
 import { scripture } from "./content/scripture.js";
@@ -25,6 +31,7 @@ let homeReminderPick = null;
 let canvasCopyIdx = null;
 let lastSyncSentEmail = "";
 
+const appEl = document.getElementById("app");
 const viewEl = document.getElementById("view");
 const subEl = document.getElementById("h-sub");
 const langLabelEl = document.getElementById("h-lang");
@@ -75,14 +82,21 @@ function render() {
 
 function wireReview() {
   const inp = viewEl.querySelector("#sum-search");
-  const listEl = viewEl.querySelector("#rv-list");
-  const countEl = viewEl.querySelector("#rv-count");
-  if (inp) inp.addEventListener("input", (e) => {
-    setSearch(e.target.value);
-    const { listHtml, count } = renderReviewList();
-    listEl.innerHTML = listHtml;
-    countEl.textContent = t("review.resultCount", count);
-  });
+  if (inp) {
+    // Full re-render on search so grouped results + chip counts stay in sync.
+    // Preserve caret and focus by rebinding after each render.
+    inp.addEventListener("input", (e) => {
+      setSearch(e.target.value);
+      render();
+      const next = viewEl.querySelector("#sum-search");
+      if (next) {
+        next.focus();
+        // Place caret at end.
+        const v = next.value;
+        next.setSelectionRange(v.length, v.length);
+      }
+    });
+  }
   viewEl.querySelectorAll("[data-filter-sub]").forEach(btn => {
     btn.addEventListener("click", () => {
       setFilterSubject(btn.dataset.filterSub);
@@ -101,9 +115,12 @@ function wireSettings() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      try { importJSON(String(reader.result || "")); toast(t("toast.imported")); applyLang(); applyTheme(); render(); }
-      catch { toast(t("toast.importFailed")); }
+    reader.onload = async () => {
+      try {
+        await importJSON(String(reader.result || ""));
+        toast(t("toast.imported"));
+        applyLang(); applyTheme(); render();
+      } catch { toast(t("toast.importFailed")); }
     };
     reader.readAsText(file);
   });
@@ -190,17 +207,11 @@ function completeSession(summary, subjectId) {
   if (!live) return;
   const now = Date.now();
   const dateY = ymd(today());
-  state.sessions.push({
-    id: live.id,
-    date: dateY,
-    startedAt: live.startedAt,
-    finishedAt: now,
-    summary,
-    subjectId
-  });
+  const wasFirstEver = state.sessions.length === 0;
+  addSession({ summary, subjectId, startedAt: live.startedAt, finishedAt: now, date: dateY });
   state.activeSession = null;
   // Also update canvas startDate if this is the first session ever
-  if (state.sessions.length === 1) state.canvas.startDate = dateY;
+  if (wasFirstEver) state.canvas.startDate = dateY;
   save();
   animateDate = dateY;
   toast(t("toast.sessionSaved"));
@@ -279,21 +290,28 @@ document.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-act], [data-tab]");
   if (!btn) return;
   const tab = btn.dataset.tab;
-  if (tab) { setTab(tab); return; }
+  if (tab) {
+    if (appState !== "ready") return;
+    setTab(tab);
+    return;
+  }
   const act = btn.dataset.act;
   switch (act) {
     case "toggle-lang":
       state.lang = state.lang === "id" ? "en" : "id";
-      save(); applyLang(); render();
+      if (appState === "ready") save();
+      applyLang();
+      if (appState === "ready") render(); else renderGate();
       break;
     case "toggle-theme": {
       const order = ["auto", "light", "dark"];
       const i = order.indexOf(state.theme);
       state.theme = order[(i + 1) % order.length];
-      save(); applyTheme();
+      if (appState === "ready") save();
+      applyTheme();
       break;
     }
-    case "open-settings": setTab("settings"); break;
+    case "open-settings": if (appState === "ready") setTab("settings"); break;
     case "canvas-copy-reroll": {
       // Pick a different index than current
       let next = pickCanvasCopyIdx();
@@ -306,6 +324,57 @@ document.addEventListener("click", (e) => {
     case "session-start": startSession(); break;
     case "session-finish": finishSession(); break;
     case "session-cancel": cancelSessionConfirm(); break;
+    case "rv-open-topic": {
+      const id = btn.dataset.sub || "";
+      if (id) { openTopic(id); render(); }
+      break;
+    }
+    case "rv-open-sum": {
+      const id = btn.dataset.sum || "";
+      if (id) { openSummaryDetail(id); render(); }
+      break;
+    }
+    case "rv-back": {
+      goBack();
+      render();
+      break;
+    }
+    case "rv-edit-sum": {
+      const id = btn.dataset.sum || "";
+      const s = state.sessions.find(x => x.id === id);
+      if (!s) return;
+      openSummaryEdit({
+        session: s,
+        onSave: ({ title, summary }) => {
+          const ok = updateSession(id, { title, summary });
+          if (ok) {
+            toast(t("review.updated"));
+            render();
+          }
+        }
+      });
+      break;
+    }
+    case "rv-delete-sum": {
+      const id = btn.dataset.sum || "";
+      if (!id) return;
+      openConfirm({
+        title: t("review.deleteConfirmTitle"),
+        body: t("review.deleteConfirmBody"),
+        okLabel: t("review.deleteConfirmOk"),
+        cancelLabel: t("review.deleteConfirmNo"),
+        danger: true,
+        onOk: () => {
+          const ok = deleteSession(id);
+          if (ok) {
+            reconcileAfterDelete();
+            toast(t("review.deleted"));
+            render();
+          }
+        }
+      });
+      break;
+    }
     case "banner-pre-go": dismissPreBanner({ cancel: false }); break;
     case "banner-pre-cancel": dismissPreBanner({ cancel: true }); break;
     case "banner-post-close": removeBanner(); break;
@@ -342,34 +411,35 @@ document.addEventListener("click", (e) => {
         okLabel: t("modal.confirm.reset.ok"),
         cancelLabel: t("modal.confirm.reset.no"),
         danger: true,
-        onOk: () => {
-          reset();
+        onOk: async () => {
+          await resetAccountData();
           homeReminderPick = null;
           applyLang(); applyTheme();
           toast(t("toast.reset"));
           setTab("home");
+          syncPushDebounced();
         }
       });
       break;
     }
     case "sync-signin": {
-      const emailInput = viewEl.querySelector("#sync-email");
+      const emailInput = document.querySelector("#sync-email");
       const email = (emailInput?.value || "").trim();
       if (!email) { emailInput?.focus(); return; }
       sync.signInWithEmail(email)
-        .then(() => { lastSyncSentEmail = email; render(); })
+        .then(() => { lastSyncSentEmail = email; renderCurrent(); })
         .catch((e) => { toast(e?.message || "Gagal mengirim link"); console.warn(e); });
       break;
     }
     case "sync-verify-code": {
-      const emailInput = viewEl.querySelector("#sync-email");
-      const codeInput = viewEl.querySelector("#sync-code");
+      const emailInput = document.querySelector("#sync-email");
+      const codeInput = document.querySelector("#sync-code");
       const email = (emailInput?.value || "").trim();
       const code = (codeInput?.value || "").trim();
       if (!email) { emailInput?.focus(); return; }
       if (!code) { codeInput?.focus(); return; }
       sync.verifyEmailCode(email, code)
-        .then(() => { lastSyncSentEmail = ""; render(); })
+        .then(() => { lastSyncSentEmail = ""; renderCurrent(); })
         .catch((e) => { toast(e?.message || "Kode tidak valid"); console.warn(e); });
       break;
     }
@@ -389,49 +459,41 @@ function same(a, b) {
   return a.kind === b.kind && a.motivationIdx === b.motivationIdx && a.scriptureIdx === b.scriptureIdx;
 }
 
-/* ============== SYNC ============== */
+function renderCurrent() {
+  if (appState === "ready") render();
+  else renderGate();
+}
+
+/* ============== AUTH GATE + SYNC ============== */
+// Account is required: nothing is shown or editable until signed in.
+// appState: "checking" | "not-configured" | "gate" | "loading" | "ready"
+let appState = "checking";
 let currentUser = null;
 let syncPushTimer = null;
 let syncInFlight = false;
 let syncPendingAfterInFlight = false;
 let syncStatus = "idle"; // "idle" | "syncing" | "error" | "offline"
+let pullInterval = null;
 
 function setSyncStatus(s) {
   syncStatus = s;
-  // If settings view is open, re-render its sync pill
-  if (currentTab === "settings") render();
+  if (currentTab === "settings" && appState === "ready") render();
 }
 
-async function syncPull() {
-  if (!sync.syncAvailable || !currentUser) return;
-  try {
-    setSyncStatus("syncing");
-    const remote = await sync.pullRemote();
-    if (!remote) {
-      // No remote row yet. Push local as initial seed.
-      await syncPushImmediate();
-      setSyncStatus("idle");
-      return;
-    }
-    const remoteT = Date.parse(remote.updatedAt) || 0;
-    const localPulled = Date.parse(state.sync?.lastPulledServerAt || "") || 0;
-    const localModified = state.sync?.lastModifiedAt || 0;
-    const localSynced = state.sync?.lastSyncedAt || 0;
-    // Decide: remote wins if it's strictly newer than what we last pulled AND
-    // local hasn't been modified since the last successful sync.
-    if (remoteT > localPulled && localModified <= localSynced) {
-      applyRemote(remote.data, remote.updatedAt);
-      render();
-    } else if (hasUnpushedChanges()) {
-      await syncPushImmediate();
-    } else {
-      // In sync
-    }
-    setSyncStatus("idle");
-  } catch (e) {
-    console.warn("sync pull failed", e);
-    setSyncStatus("error");
+function setAppState(next) {
+  appState = next;
+  appEl.classList.toggle("gated", appState !== "ready");
+  if (appState === "not-configured" || appState === "gate" || appState === "loading") {
+    renderGate();
   }
+}
+
+function renderGate() {
+  viewEl.innerHTML = renderAuthGate({
+    lastSentEmail: lastSyncSentEmail,
+    notConfigured: appState === "not-configured",
+    loading: appState === "loading",
+  });
 }
 
 async function syncPushImmediate() {
@@ -440,8 +502,7 @@ async function syncPushImmediate() {
   syncInFlight = true;
   try {
     setSyncStatus("syncing");
-    const ts = await sync.pushRemote(state);
-    if (ts) markSynced(ts);
+    await sync.pushAll();
     setSyncStatus("idle");
   } catch (e) {
     console.warn("sync push failed", e);
@@ -461,33 +522,68 @@ function syncPushDebounced() {
   syncPushTimer = setTimeout(() => { syncPushImmediate(); }, 1200);
 }
 
+async function syncPullPoll() {
+  if (!sync.syncAvailable || !currentUser) return;
+  try {
+    const changed = await sync.pullAll();
+    if (changed && appState === "ready") render();
+  } catch (e) {
+    console.warn("sync pull failed", e);
+  }
+}
+
+function startPeriodicSync() {
+  stopPeriodicSync();
+  pullInterval = setInterval(syncPullPoll, 20000);
+}
+function stopPeriodicSync() {
+  if (pullInterval) clearInterval(pullInterval);
+  pullInterval = null;
+}
+
 export function currentSyncState() {
   return { user: currentUser, status: syncStatus, available: sync.syncAvailable };
 }
 
+async function handleSignedIn(user) {
+  currentUser = user;
+  setAppState("loading");
+  try {
+    await migrateLegacyIfNeeded(user.id);
+    await hydrate(user.id);
+    await sync.syncNow();
+  } catch (e) {
+    console.warn("boot hydrate/sync failed", e);
+    toast(t("sync.status.error"));
+  }
+  applyLang();
+  applyTheme();
+  setAppState("ready");
+  setTab("home");
+  startPeriodicSync();
+}
+
+function handleSignedOut() {
+  currentUser = null;
+  stopPeriodicSync();
+  setAppState("gate");
+}
+
 if (sync.syncAvailable) {
-  // Push on every save (debounced)
   onAfterSave(() => syncPushDebounced());
-  // React to auth changes
   sync.onAuthChange((user) => {
     const was = currentUser;
-    currentUser = user;
-    if (currentTab === "settings") render();
-    if (user && !was) {
-      // Just signed in: pull remote (which may push local if nothing remote yet)
-      syncPull();
-    } else if (!user && was) {
-      // Signed out: keep local data as-is
-      setSyncStatus("idle");
-    }
+    if (user && !was) handleSignedIn(user);
+    else if (!user && was !== null) handleSignedOut();
+    else if (!user && appState === "checking") setAppState("gate");
   });
-  // Online/offline cues
-  window.addEventListener("online", () => { if (currentUser) syncPushImmediate(); });
+  window.addEventListener("online", () => { if (currentUser) { setSyncStatus("idle"); syncPushImmediate(); syncPullPoll(); } });
   window.addEventListener("offline", () => setSyncStatus("offline"));
+} else {
+  setAppState("not-configured");
 }
 
 /* ============== BOOT ============== */
 initModal();
 applyLang();
 applyTheme();
-setTab("home");
