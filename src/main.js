@@ -361,6 +361,18 @@ document.addEventListener("click", (e) => {
         .catch((e) => { toast(e?.message || "Gagal mengirim link"); console.warn(e); });
       break;
     }
+    case "sync-verify-code": {
+      const emailInput = viewEl.querySelector("#sync-email");
+      const codeInput = viewEl.querySelector("#sync-code");
+      const email = (emailInput?.value || "").trim();
+      const code = (codeInput?.value || "").trim();
+      if (!email) { emailInput?.focus(); return; }
+      if (!code) { codeInput?.focus(); return; }
+      sync.verifyEmailCode(email, code)
+        .then(() => { lastSyncSentEmail = ""; render(); })
+        .catch((e) => { toast(e?.message || "Kode tidak valid"); console.warn(e); });
+      break;
+    }
     case "sync-signout": {
       sync.signOut().then(() => { lastSyncSentEmail = ""; });
       break;

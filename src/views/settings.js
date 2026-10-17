@@ -95,6 +95,11 @@ function renderSyncSection({ syncUser, syncStatus, lastSentEmail }) {
             <button class="btn primary" data-act="sync-signin">${esc(t("sync.sendLink"))}</button>
           </div>
           ${sent}
+          <p class="muted small" style="margin:4px 0 0">${esc(t("sync.codeHint"))}</p>
+          <div class="syncform">
+            <input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="${esc(t("sync.codePh"))}" />
+            <button class="btn ghost" data-act="sync-verify-code">${esc(t("sync.verifyCode"))}</button>
+          </div>
         </div>
       </section>
     `;

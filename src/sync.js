@@ -46,6 +46,12 @@ export async function signInWithEmail(email, redirectTo) {
   if (error) throw error;
 }
 
+export async function verifyEmailCode(email, token) {
+  if (!syncAvailable) throw new Error("sync not configured");
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  if (error) throw error;
+}
+
 export async function signOut() {
   if (!syncAvailable) return;
   await supabase.auth.signOut();

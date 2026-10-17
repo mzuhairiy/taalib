@@ -63,6 +63,8 @@ create policy "own data update" on taalib_state
 - **Site URL**: `http://localhost:5173` (for dev). After you deploy, add your Vercel URL here too.
 - **Redirect URLs**: add both `http://localhost:5173/*` and your Vercel URL (e.g. `https://taalib.vercel.app/*`).
 
+**Authentication → Email Templates → Magic Link**: on iOS, tapping the link from Mail/Gmail opens a separate in-app browser whose storage isn't shared with Safari or an installed PWA, so the sign-in can land somewhere other than where the user asked for it. The app also shows a "6-digit code" fallback that avoids this entirely — add `{{ .Token }}` somewhere in the template body (e.g. `Or enter this code: {{ .Token }}`) so that code is actually included in the email.
+
 ### 4. Paste the keys locally
 
 ```bash
